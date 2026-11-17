@@ -1,0 +1,6 @@
+{
+  "name": "MediaGuard",
+  "description": "AI-assisted media analysis and forensic inspection workbench for synthetic image and face manipulation detection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,6 @@
+{
+  "summary": "Final revised MediaGuard plan separating AI-generated image detection from face manipulation detection, enforcing task-specific heads/datasets, explicit API indicator separation (ai_generated_indicator, face_manipulation_indicator, inconclusive/unavailable), normalized /api/v1/health references, and checkpoint-free Milestone 1 completion.",
+  "updatedAt": "2026-11-16T18:26:24.116645773Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
