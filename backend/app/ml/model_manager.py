@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 import shutil
 from datetime import datetime, timezone
@@ -9,6 +10,8 @@ from typing import Dict, Optional
 
 from app.ml.specs import MODEL_CATALOG, ModelSpec
 from app.schemas import DownloadLifecycleStatus, ModelManifestEntry, ModelsStatusResponse
+
+logger = logging.getLogger(__name__)
 
 
 def compute_file_sha256(file_path: Path) -> str:
@@ -162,6 +165,16 @@ class ModelManager:
             entry["updated_at"] = self._now_iso()
             self._save_manifest()
 
+    def mark_error(self, key: str, error_message: str) -> None:
+        """Persist a failed model lifecycle state, including worker-level errors."""
+        with self._lock:
+            entry = self._state[key]
+            entry["loaded_in_memory"] = False
+            entry["status"] = "error"
+            entry["error_message"] = error_message[:500]
+            entry["updated_at"] = self._now_iso()
+            self._save_manifest()
+
     def record_runtime_metrics(
         self,
         key: str,
@@ -181,6 +194,7 @@ class ModelManager:
 
     def ensure_model_downloaded(self, key: str, force_verify: bool = True) -> ModelManifestEntry:
         spec = MODEL_CATALOG[key]
+        logger.info("Checking model checkpoint key=%s path=%s", key, self._model_dir(spec))
         if force_verify:
             ok, sha, _ = self._verify_spec_on_disk(spec)
             if ok:
@@ -192,8 +206,10 @@ class ModelManager:
                         self._state[key]["status"] = "verified"
                     self._state[key]["updated_at"] = self._now_iso()
                     self._save_manifest()
+                logger.info("Model checkpoint already verified key=%s sha256=%s", key, sha)
                 return self.get_entry(key)
 
+        logger.info("Starting model download key=%s repo=%s revision=%s", key, spec.repo_id, spec.revision)
         with self._lock:
             self._state[key]["status"] = "downloading"
             self._state[key]["error_message"] = None
@@ -206,7 +222,9 @@ class ModelManager:
         try:
             from huggingface_hub import hf_hub_download
         except ImportError as exc:
+            logger.exception("Cannot download model key=%s: huggingface_hub is unavailable", key)
             with self._lock:
+                self._state[key]["verified"] = False
                 self._state[key]["status"] = "error"
                 self._state[key]["error_message"] = (
                     f"huggingface_hub is not installed: {exc}"
@@ -245,6 +263,7 @@ class ModelManager:
                     self._state[key]["actual_sha256"] = sha
                     self._state[key]["status"] = "verified"
                     self._state[key]["error_message"] = None
+                    logger.info("Model download and SHA-256 verification succeeded key=%s sha256=%s", key, sha)
                 else:
                     primary_path = mdir / spec.primary_weight_file
                     if primary_path.exists() and sha:
@@ -253,9 +272,11 @@ class ModelManager:
                     self._state[key]["actual_sha256"] = sha
                     self._state[key]["status"] = "error"
                     self._state[key]["error_message"] = err or "Verification failed."
+                    logger.error("Downloaded model failed verification key=%s reason=%s", key, err)
                 self._state[key]["updated_at"] = self._now_iso()
                 self._save_manifest()
         except Exception as exc:
+            logger.exception("Model download failed key=%s repo=%s", key, spec.repo_id)
             msg = str(exc)
             lower = msg.lower()
             if any(

@@ -1,3 +1,4 @@
+import logging
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -11,6 +12,25 @@ from app.db.database import ScanRepository
 from app.ml.registry import ModelRegistry
 from app.routers import analyze, evaluation, health, models, scans
 from app.security import SlidingWindowRateLimiter
+
+logger = logging.getLogger(__name__)
+
+
+def _download_primary_model(registry: ModelRegistry) -> None:
+    """Run startup download off-thread and expose unexpected failures in status."""
+    try:
+        registry.setup_and_load_all()
+        primary = registry.manager.get_entry("ai_generated_detector")
+        if primary.verified:
+            logger.info("Startup Imager-1-Tiny download completed and checkpoint verified")
+        else:
+            logger.error(
+                "Startup Imager-1-Tiny download finished without a verified checkpoint: %s",
+                primary.error_message or primary.status,
+            )
+    except Exception as exc:
+        logger.exception("Startup Imager-1-Tiny download worker failed")
+        registry.manager.mark_error("ai_generated_detector", f"Startup download failed: {exc}")
 
 
 def create_app(
@@ -28,14 +48,38 @@ def create_app(
         app.state.repo.initialize()
 
         if load_models_on_startup:
+            logger.info(
+                "Model startup configuration: lightweight_mode=%s auto_download_models=%s",
+                settings.lightweight_mode,
+                settings.auto_download_models,
+            )
             app.state.registry.load_cached_models()
-            status = app.state.registry.manager.get_status()
             primary = app.state.registry.manager.get_entry("ai_generated_detector")
+            logger.info(
+                "Imager-1-Tiny startup verification: verified=%s status=%s",
+                primary.verified,
+                primary.status,
+            )
             if settings.auto_download_models and not primary.verified:
-                threading.Thread(
-                    target=app.state.registry.setup_and_load_all,
+                logger.info("Starting background download for Imager-1-Tiny")
+                worker = threading.Thread(
+                    target=_download_primary_model,
+                    args=(app.state.registry,),
+                    name="mediaguard-imager-download",
                     daemon=True,
-                ).start()
+                )
+                try:
+                    worker.start()
+                    logger.info("Background Imager-1-Tiny download thread started")
+                except Exception as exc:
+                    logger.exception("Could not start Imager-1-Tiny download thread")
+                    app.state.registry.manager.mark_error(
+                        "ai_generated_detector", f"Could not start startup download: {exc}"
+                    )
+            elif not settings.auto_download_models:
+                logger.info("Automatic model download is disabled by configuration")
+            else:
+                logger.info("Imager-1-Tiny checkpoint is already verified; download skipped")
         yield
         app.state.registry.engine.unload_models()
 
