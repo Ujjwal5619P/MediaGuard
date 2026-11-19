@@ -9,6 +9,8 @@ MediaGuard is an image-forensics demo with a React + Vite frontend and a FastAPI
 - Primary AI-generated-image detector: **Imager-1-Tiny**, a ResNet-50 classifier, always run in FP32 on CPU.
 - Optional local pipelines: UnivFD comparison, EfficientNet-B0 face manipulation analysis with Grad-CAM, and DINOv2 features/patch attention. These stay enabled in normal local mode and can be disabled together for a small CPU deployment.
 
+Live at : https://mediaguard-frontend.onrender.com/
+
 The existing database tables and API v1 response structure remain in place. Historical `smaug_*` database and evaluation field names are retained for compatibility; the primary model recorded in new scans is Imager-1-Tiny.
 
 ## Detector and preprocessing
