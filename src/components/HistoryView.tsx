@@ -338,7 +338,7 @@ export function HistoryView({ apiBaseUrl, onInspectScan, onNavigate }: HistoryVi
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">
-                      <div>{row.ai_model_id || 'abacusai/Smaug-AI-Image-Detector'}</div>
+                      <div>{row.ai_model_id || 'Imagers/Imager-1-tiny'}</div>
                       <div className="tabular-nums text-slate-500">
                         {row.execution_device || 'cpu'}
                         {row.inference_ms !== null && row.inference_ms !== undefined
@@ -466,7 +466,7 @@ export function HistoryView({ apiBaseUrl, onInspectScan, onNavigate }: HistoryVi
               </div>
 
               <div className="rounded-lg border border-slate-800 bg-[#07090E] p-3">
-                <dt className="text-slate-400">Primary AI-Generated Indicator (Smaug)</dt>
+                <dt className="text-slate-400">Primary AI-Generated Indicator (Imager-1-Tiny)</dt>
                 <dd className="mt-1 font-mono text-slate-200 space-y-1 tabular-nums">
                   <div>Model: {detailModal.ai_generated_indicator.model_name || detailModal.ai_generated_indicator.model_id}</div>
                   <div>

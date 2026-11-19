@@ -475,7 +475,7 @@ export function AnalyzerView({
                   Independent Pretrained Detection Results
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Primary AI-generated detection uses official Smaug-AI-Image-Detector (3×528 crops); UnivFD CLIP ViT-L/14 reports a separate secondary comparison score; face manipulation runs independently on detected faces.
+                  Primary AI-generated detection uses Imager-1-Tiny (ResNet-50, 224×224, CPU); UnivFD CLIP ViT-L/14 reports a separate secondary comparison score; face manipulation runs independently on detected faces.
                 </p>
               </div>
 
@@ -504,12 +504,12 @@ export function AnalyzerView({
             <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
               <IndicatorCard
                 roleLabel="Primary AI-Generated Detector"
-                title="Smaug-AI-Image-Detector"
-                scopeDescription="Evaluates whole-image synthetic origin via abacusai/Smaug-AI-Image-Detector (EmbeddingGemma-2 vision encoder across three 528×528 spatial crops)."
+                title="Imager-1-Tiny"
+                scopeDescription="Evaluates whole-image synthetic origin via Imagers/Imager-1-tiny (ResNet-50 with ImageNet normalization and a 0.385 decision threshold)."
                 indicator={analysisResult?.ai_generated_indicator ?? null}
                 offlineMessage={
                   !analysisResult && healthError && !health
-                    ? 'Backend disconnected. Start FastAPI on /api/v1/health to execute Smaug inference.'
+                    ? 'Backend disconnected. Start FastAPI on /api/v1/health to run CPU image inference.'
                     : null
                 }
               />
@@ -532,7 +532,7 @@ export function AnalyzerView({
               <IndicatorCard
                 roleLabel="Secondary Comparison Detector (Non-Primary Reference)"
                 title="UniversalFakeDetect (UnivFD · CLIP ViT-L/14)"
-                scopeDescription="Independent secondary comparison score from openai/clip-vit-large-patch14 + fc_weights.pth linear head. Never fused or blended with Smaug."
+                scopeDescription="Independent secondary comparison score from openai/clip-vit-large-patch14 + fc_weights.pth linear head. Never fused or blended with the primary detector."
                 indicator={analysisResult?.univfd_indicator ?? null}
                 offlineMessage={
                   !analysisResult && healthError && !health
@@ -576,7 +576,7 @@ export function AnalyzerView({
                       <dd className="mt-1 text-slate-200">{analysisResult.execution_device}</dd>
                     </div>
                     <div className="text-right">
-                      <dt className="text-slate-500">Total Pipeline Latency / VRAM</dt>
+                      <dt className="text-slate-500">Detector Pipeline Latency / Peak VRAM</dt>
                       <dd className="mt-1 text-slate-200">
                         {analysisResult.inference_ms} ms
                         {analysisResult.vram_peak_mb !== null
@@ -592,7 +592,7 @@ export function AnalyzerView({
             <div className="flex items-start gap-2.5 rounded-xl border border-slate-800 bg-[#0B0E17] px-4 py-3 text-xs text-slate-400">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
               <p className="leading-relaxed">
-                <span className="font-medium text-slate-200">Methodological Notice:</span> MediaGuard reports uncalibrated raw model probabilities from Smaug-AI-Image-Detector (Primary), UnivFD (Secondary Comparison), and EfficientNet-B0 FF++ (Face Manipulation), plus experimental saliency overlays. Outputs are investigative indicators, never definitive proof of synthetic origin or manipulation.
+                <span className="font-medium text-slate-200">Methodological Notice:</span> MediaGuard reports uncalibrated raw model probabilities from Imager-1-Tiny (Primary), UnivFD (Secondary Comparison), and EfficientNet-B0 FF++ (Face Manipulation), plus experimental saliency overlays. Outputs are investigative indicators, never definitive proof of synthetic origin or manipulation.
               </p>
             </div>
           </section>

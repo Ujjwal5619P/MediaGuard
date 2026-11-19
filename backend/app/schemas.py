@@ -103,7 +103,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     service: str
     milestone: str
-    version: str = "1.2.0"
+    version: str = "1.3.0"
     timestamp_utc: str
     cuda_available: bool
     device_name: str
@@ -156,7 +156,7 @@ class TaskIndicator(BaseModel):
     task: Literal["ai_generated_image_detection", "face_manipulation_detection"]
     status: TaskStatus
     score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    decision_threshold: float = 0.50
+    decision_threshold: float = 0.385
     prediction_label: Optional[str] = None
     calibrated: bool = False
     model_id: str
@@ -354,7 +354,7 @@ class DatasetInspectResponse(BaseModel):
 class DatasetEvaluationRequest(BaseModel):
     dataset_dir: Optional[str] = None
     split_role: DatasetSplitRole = "evaluation"
-    decision_threshold: float = Field(default=0.50, gt=0.0, lt=1.0)
+    decision_threshold: float = Field(default=0.385, gt=0.0, lt=1.0)
     include_univfd: bool = True
     max_images: Optional[int] = Field(default=None, ge=1, le=5000)
 

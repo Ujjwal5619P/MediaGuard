@@ -70,7 +70,6 @@ async def analyze_image(
 
     rate_limiter.check(get_client_key(request))
 
-    started = time.perf_counter()
     raw_bytes, detected_mime, safe_filename = await read_validated_upload(file, settings)
     width, height, sha256_hex, exif_summary, original_deleted = inspect_image_safely(
         raw_bytes, detected_mime, settings
@@ -96,7 +95,9 @@ async def analyze_image(
             include_attribution,
         )
 
-    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    # inference_ms represents detector pipeline execution, not upload validation
+    # or database persistence latency.
+    elapsed_ms = registry.engine.last_pipeline_ms or 0
     created_at = registry.utc_now_iso()
     record_expires_at = compute_expiry_iso(settings.record_retention_days)
     artifact_expires_at = (

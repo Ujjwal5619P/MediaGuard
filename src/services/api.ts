@@ -18,7 +18,8 @@ import type {
 const STORAGE_KEY = 'mediaguard_api_base_url';
 
 export const DEFAULT_API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') || 'http://127.0.0.1:8000';
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') ||
+  (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
 
 export function getSavedApiBaseUrl(): string {
   try {
@@ -64,17 +65,31 @@ async function parseErrorResponse(res: Response): Promise<ApiClientError> {
     const code = data?.detail?.code || `HTTP_${res.status}`;
     return new ApiClientError(detail, res.status, code);
   } catch {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      return new ApiClientError(
+        'The backend is unavailable or waking from idle. Wait briefly, then retry.',
+        res.status,
+        `HTTP_${res.status}`
+      );
+    }
     return new ApiClientError(`Backend returned HTTP ${res.status}`, res.status, `HTTP_${res.status}`);
   }
 }
 
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  if (!baseUrl) {
+    throw new ApiClientError(
+      'Backend URL is not configured. Set VITE_API_BASE_URL in the frontend deployment or enter it in System Settings.',
+      null,
+      'ERR_API_URL_MISSING'
+    );
+  }
   let res: Response;
   try {
     res = await fetch(`${baseUrl}${path}`, init);
   } catch {
     throw new ApiClientError(
-      `Unable to reach FastAPI backend at ${baseUrl}. Ensure the local Windows/Conda server is running.`,
+      `Unable to reach the FastAPI backend at ${baseUrl}. It may be unavailable or waking from idle; retry shortly.`,
       null,
       'ERR_BACKEND_UNREACHABLE'
     );

@@ -22,6 +22,7 @@ def test_settings(tmp_path: Path) -> Settings:
         max_dimension=1024,
         rate_limit_per_min=30,
         auto_download_models=False,
+        lightweight_mode=True,
     )
 
 

@@ -8,7 +8,7 @@ export function MethodologyView() {
           Detection Methodology, Pretrained Models &amp; Scientific Limitations
         </h2>
         <p className="max-w-3xl text-sm leading-relaxed text-slate-300">
-          MediaGuard — Verify Before You Trust — executes independent pretrained vision pipelines for AI-generated image detection, face manipulation analysis, and self-supervised visual feature attribution. Primary synthetic origin scoring uses official <span className="font-mono text-slate-100">abacusai/Smaug-AI-Image-Detector</span>, paired with a separate UnivFD comparison detector and task-isolated face forensics.
+          MediaGuard — Verify Before You Trust — executes independent pretrained vision pipelines for AI-generated image detection, face manipulation analysis, and self-supervised visual feature attribution. Primary synthetic origin scoring uses <span className="font-mono text-slate-100">Imagers/Imager-1-tiny</span>, paired with a separate UnivFD comparison detector and task-isolated face forensics.
         </p>
       </section>
 
@@ -16,25 +16,25 @@ export function MethodologyView() {
         <div className="rounded-xl border border-slate-800 bg-[#0B0E17] p-6 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-100">
-              01. Primary AI Detector — Smaug
+              01. Primary AI Detector — Imager-1-Tiny
             </h3>
             <span className="font-mono text-[11px] text-cyan-400 shrink-0">Apache-2.0</span>
           </div>
           <p className="text-xs leading-relaxed text-slate-300">
             Official{' '}
             <a
-              href="https://huggingface.co/abacusai/Smaug-AI-Image-Detector"
+              href="https://huggingface.co/Imagers/Imager-1-tiny"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 font-mono text-cyan-400 hover:text-cyan-300"
             >
-              <span>abacusai/Smaug-AI-Image-Detector</span>
+              <span>Imagers/Imager-1-tiny</span>
               <ExternalLink className="h-3 w-3" aria-hidden="true" />
             </a>{' '}
-            (<span className="font-mono text-slate-100">SmaugImageDetect.from_pretrained</span>).
+            (<span className="font-mono text-slate-100">ResNet-50</span>, Apache-2.0 weights).
           </p>
           <p className="text-xs leading-relaxed text-slate-400">
-            Built on an <span className="font-mono text-slate-200">EmbeddingGemma-2</span> vision-only transformer (439M params). Follows official multi-crop preprocessing: shortest side 576px (upscaling sub-528px inputs), extracting three <span className="font-mono text-slate-200">528×528</span> spatial views (<span className="font-mono">BUDGET=140</span> vision tokens) averaged cleanly before sigmoid scoring in <span className="font-mono">bf16</span> (CUDA) or <span className="font-mono">float32</span> (CPU) — never <span className="font-mono">fp16</span>.
+            Uses a single <span className="font-mono text-slate-200">224×224</span> center crop, ImageNet normalization, and a two-class head. The verified checkpoint metadata maps class 0 to real and class 1 to AI; MediaGuard reports the class-1 softmax score and applies the checkpoint's <span className="font-mono">0.385</span> threshold on CPU.
           </p>
         </div>
 
@@ -59,7 +59,7 @@ export function MethodologyView() {
             strictly as a non-primary comparison reference.
           </p>
           <p className="text-xs leading-relaxed text-slate-400">
-            Bicubic resize + center-crop to <span className="font-mono text-slate-200">224×224</span>, OpenAI CLIP <span className="font-mono text-slate-200">ViT-L/14</span> (304M vision params) L2-normalized 768-d embeddings, scored via <span className="font-mono text-slate-200">fc_weights.pth</span>. Reported independently alongside Smaug without ensemble blending.
+            Bicubic resize + center-crop to <span className="font-mono text-slate-200">224×224</span>, OpenAI CLIP <span className="font-mono text-slate-200">ViT-L/14</span> (304M vision params) L2-normalized 768-d embeddings, scored via <span className="font-mono text-slate-200">fc_weights.pth</span>. Reported independently alongside the primary detector without ensemble blending.
           </p>
         </div>
 
@@ -108,10 +108,10 @@ export function MethodologyView() {
             <span className="font-medium text-slate-100">Local Dataset Evaluation &amp; Split Separation:</span> Evaluates local folders (<span className="font-mono">dataset/ai_generated/</span> and <span className="font-mono">dataset/real/</span>) with full confusion matrix (TP, FP, TN, FN), Accuracy, Precision, Recall, F1, FPR, and FNR. Never trains, fine-tunes, or auto-tunes thresholds on evaluation images; threshold selection belongs strictly on <span className="font-mono">validation</span> splits while keeping <span className="font-mono">final_test</span> untouched.
           </li>
           <li>
-            <span className="font-medium text-slate-100">Uncalibrated Outputs:</span> Smaug <span className="font-mono">sigmoid(mean(logits))</span>, UnivFD <span className="font-mono">sigmoid(logit)</span>, and EfficientNet softmax probabilities remain marked <span className="font-mono">Uncalibrated</span> (default threshold <span className="font-mono">0.50</span>).
+            <span className="font-medium text-slate-100">Uncalibrated Outputs:</span> Imager-1-Tiny's class-1 softmax score, UnivFD's sigmoid score, and EfficientNet softmax probabilities are statistical signals, not certainty. Imager-1-Tiny uses the author-reported threshold <span className="font-mono">0.385</span>; other tasks use <span className="font-mono">0.50</span> by default.
           </li>
           <li>
-            <span className="font-medium text-slate-100">4 GB VRAM Sequential Inference:</span> On NVIDIA RTX 2050 (4 GB VRAM), a single-worker GPU lock loads one model at a time, running Smaug in <span className="font-mono">bfloat16</span> on supported CUDA GPUs (or <span className="font-mono">float32</span> CPU) and offloading models back to CPU between stages with automatic OOM CPU fallback.
+            <span className="font-medium text-slate-100">CPU Detector:</span> The primary detector always runs FP32 on CPU, including on machines that also have CUDA. Optional local comparison, face, and feature models keep their existing GPU-aware execution when lightweight deployment mode is off.
           </li>
           <li>
             <span className="font-medium text-slate-100">Privacy &amp; Bounded Validation:</span> Individual scan uploads are bounded to 15 MB, 8192 px max dimension, and 36 MP, validated via magic-byte headers, and originals are deleted immediately after inference.

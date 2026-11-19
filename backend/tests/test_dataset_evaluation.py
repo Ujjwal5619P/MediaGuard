@@ -205,6 +205,7 @@ def test_evaluation_endpoints_sqlite_persistence_and_exports(
 def _real_models_ready() -> bool:
     settings = Settings()
     mgr = ModelManager(settings.models_dir)
+    mgr.verify_existing_models()
     return mgr.get_status().all_verified
 
 

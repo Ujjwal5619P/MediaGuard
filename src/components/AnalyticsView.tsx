@@ -162,7 +162,7 @@ export function AnalyticsView({ apiBaseUrl, onNavigate }: AnalyticsViewProps) {
   // Dataset Evaluation state
   const [datasetDir, setDatasetDir] = useState('dataset');
   const [splitRole, setSplitRole] = useState<DatasetSplitRole>('evaluation');
-  const [thresholdInput, setThresholdInput] = useState('0.50');
+  const [thresholdInput, setThresholdInput] = useState('0.385');
   const [maxImagesInput, setMaxImagesInput] = useState('');
   const [includeUnivfd, setIncludeUnivfd] = useState(true);
 
@@ -298,7 +298,7 @@ export function AnalyticsView({ apiBaseUrl, onNavigate }: AnalyticsViewProps) {
             Forensic Detection Analytics &amp; Dataset Evaluation
           </h2>
           <p className="mt-1 text-xs text-slate-400">
-            Live SQLite investigation metrics alongside local offline benchmark evaluation for Smaug-AI-Image-Detector and UnivFD comparison.
+            Live SQLite investigation metrics alongside local offline benchmark evaluation for Imager-1-Tiny and UnivFD comparison.
           </p>
         </div>
 
@@ -387,7 +387,7 @@ export function AnalyticsView({ apiBaseUrl, onNavigate }: AnalyticsViewProps) {
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-[#0B0E17] p-5">
-                <div className="text-xs text-slate-400">Smaug Primary Signal Rate</div>
+                <div className="text-xs text-slate-400">Imager-1-Tiny Signal Rate</div>
                 <div className="mt-2 font-mono text-2xl font-semibold tabular-nums text-rose-400">
                   {analytics.ai_evaluated_count > 0
                     ? `${((analytics.ai_flagged_count / analytics.ai_evaluated_count) * 100).toFixed(1)}%`
@@ -430,7 +430,7 @@ export function AnalyticsView({ apiBaseUrl, onNavigate }: AnalyticsViewProps) {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <section className="rounded-xl border border-slate-800 bg-[#0B0E17] p-5">
                 <h3 className="text-sm font-semibold text-slate-100">
-                  Smaug Primary Raw P(ai) Score Distribution
+                  Imager-1-Tiny Raw P(ai) Score Distribution
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-400">
                   Frequency across 20% probability buckets (decision threshold 50%).
@@ -761,8 +761,8 @@ export function AnalyticsView({ apiBaseUrl, onNavigate }: AnalyticsViewProps) {
                       <tr className="border-b border-slate-800">
                         <th className="px-4 py-3 font-medium">Relative Path</th>
                         <th className="px-4 py-3 font-medium">Ground Truth</th>
-                        <th className="px-4 py-3 font-medium">Smaug Score</th>
-                        <th className="px-4 py-3 font-medium">Smaug Pred</th>
+                        <th className="px-4 py-3 font-medium">Primary Score</th>
+                        <th className="px-4 py-3 font-medium">Primary Pred</th>
                         <th className="px-4 py-3 font-medium">Verdict</th>
                         {activeEval.include_univfd && (
                           <>

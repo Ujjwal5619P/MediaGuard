@@ -34,7 +34,7 @@ const API_ENDPOINTS = [
   { method: 'GET', path: '/api/v1/models/status', summary: 'Persistent checkpoint manifest, SHA-256 verification & telemetry' },
   { method: 'POST', path: '/api/v1/models/setup', summary: 'Download missing checkpoints, verify SHA-256 & load models' },
   { method: 'POST', path: '/api/v1/features/dinov2', summary: 'Extract real 384-d DINOv2 ViT-S/14 image embeddings' },
-  { method: 'POST', path: '/api/v1/analyze/image', summary: 'Run sequential Smaug + UnivFD comparison + EffNet-B0 + overlays' },
+  { method: 'POST', path: '/api/v1/analyze/image', summary: 'Run Imager-1-Tiny primary + optional local comparison/face/features' },
   { method: 'GET', path: '/api/v1/analytics', summary: 'Real aggregate detection & performance metrics from SQLite' },
   { method: 'GET', path: '/api/v1/evaluation/inspect-folder', summary: 'Count local dataset/ai_generated/ and dataset/real/ images' },
   { method: 'POST', path: '/api/v1/evaluation/run', summary: 'Run offline confusion matrix & metric evaluation without tuning' },
@@ -280,7 +280,7 @@ export function SystemView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
-                  {renderComponentRow('Pipeline A (Primary): Smaug', health.models.ai_generated_detector)}
+                  {renderComponentRow('Pipeline A (Primary): Imager-1-Tiny · CPU', health.models.ai_generated_detector)}
                   {health.models.univfd_detector &&
                     renderComponentRow('Pipeline A (Comparison): UnivFD', health.models.univfd_detector)}
                   {renderComponentRow('Pipeline B: Face Manip.', health.models.face_manipulation_detector)}
@@ -439,14 +439,12 @@ export function SystemView({
             Windows Conda Launch Commands (mediaguard · RTX 2050)
           </h3>
           <p className="text-xs leading-relaxed text-slate-400">
-            Upgrades your <span className="font-mono text-slate-200">mediaguard</span> Conda environment to support <span className="font-mono text-slate-200">abacusai/Smaug-AI-Image-Detector</span> (<span className="font-mono">transformers&gt;=5.20.0,&lt;5.21.0</span> and <span className="font-mono">sentence-transformers&gt;=6.1.0</span> on Python 3.10+). Run single-worker on 127.0.0.1 so CUDA memory stays within 4 GB VRAM.
+            Uses the existing <span className="font-mono text-slate-200">mediaguard</span> Conda environment. The primary Imager-1-Tiny detector runs on CPU; optional cached models stay available in normal local mode. No package upgrade is needed when the environment already has the documented dependencies.
           </p>
           <pre className="overflow-x-auto rounded-lg border border-slate-800 bg-[#07090E] p-3 font-mono text-[11px] leading-relaxed text-slate-300">
 {`cd backend
 conda activate mediaguard
-pip install -r requirements.txt
 python setup_models.py
-pytest -v
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1`}
           </pre>
         </section>

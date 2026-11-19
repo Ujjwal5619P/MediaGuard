@@ -25,7 +25,8 @@ class ModelRegistry:
         models_dir: Path,
         artifacts_dir: Path,
         low_vram_offload: bool = True,
-        decision_threshold: float = 0.50,
+        decision_threshold: float = 0.385,
+        lightweight_mode: bool = False,
     ) -> None:
         self.gpu_semaphore = asyncio.Semaphore(1)
         self.manager = ModelManager(models_dir=models_dir)
@@ -35,21 +36,48 @@ class ModelRegistry:
             low_vram_offload=low_vram_offload,
             decision_threshold=decision_threshold,
         )
+        self.lightweight_mode = lightweight_mode
+        self.engine.lightweight_mode = lightweight_mode
         self.calibration_evaluated = False
 
     def load_cached_models(self) -> None:
-        self.engine.load_verified_models()
+        self.engine.load_verified_models(lightweight_mode=self.lightweight_mode)
 
     def setup_and_load_all(self) -> None:
-        self.manager.download_all_models()
-        self.engine.load_verified_models()
+        self.manager.download_all_models(keys=["ai_generated_detector"])
+        self.engine.load_verified_models(lightweight_mode=self.lightweight_mode)
 
     def probe_hardware(self) -> Tuple[bool, str, str, Optional[MeasuredVram]]:
+        if self.lightweight_mode:
+            return False, "CPU (lightweight detector mode)", "cpu", None
         return self.engine.probe_hardware()
 
     def _component_readiness(self, key: str, role: str) -> ModelComponentReadiness:
         spec = MODEL_CATALOG[key]
         entry = self.manager.get_entry(key)
+
+        if self.lightweight_mode and key != "ai_generated_detector":
+            status = "loaded" if entry.loaded_in_memory else (
+                "verified" if entry.verified else "not_downloaded"
+            )
+            if entry.loaded_in_memory:
+                # Heal stale manifests after a switch from full to lightweight
+                # mode; runtime-loaded state is authoritative.
+                entry.loaded_in_memory = False
+                status = "verified" if entry.verified else "not_downloaded"
+                self.manager.mark_loaded(key, False)
+            return ModelComponentReadiness(
+                status="unavailable",
+                model_id=spec.repo_id,
+                role=role,
+                checkpoint_verified=entry.verified,
+                license=spec.license,
+                source=spec.source_url,
+                reason=(
+                    f"Disabled and not loaded in lightweight deployment mode (checkpoint state: {status}); "
+                    "enable normal local mode to use this optional pipeline."
+                ),
+            )
 
         status: ModelComponentStatus
         if entry.loaded_in_memory:
@@ -87,7 +115,7 @@ class ModelRegistry:
             ),
             ai_generated_detector=self._component_readiness(
                 "ai_generated_detector",
-                "Primary AI-generated image detector (abacusai/Smaug-AI-Image-Detector · three 528x528 crops)",
+                "Primary AI-generated image detector (Imager-1-Tiny ResNet-50 · CPU)",
             ),
             univfd_detector=self._component_readiness(
                 "univfd_detector",

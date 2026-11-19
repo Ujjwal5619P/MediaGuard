@@ -150,7 +150,7 @@ def evaluate_local_dataset(
     engine: InferenceEngine,
     dataset_dir: Path,
     split_role: DatasetSplitRole = "evaluation",
-    decision_threshold: float = 0.50,
+    decision_threshold: float = 0.385,
     include_univfd: bool = True,
     max_images: Optional[int] = None,
 ) -> DatasetEvaluationDetail:
@@ -257,8 +257,8 @@ def evaluate_local_dataset(
         )
 
     smaug_metrics = _compute_metrics(
-        model_id="abacusai/Smaug-AI-Image-Detector",
-        model_name="Smaug AI Image Detector (Primary)",
+        model_id="Imagers/Imager-1-tiny",
+        model_name="Imager-1-Tiny (Primary)",
         items=results,
         use_univfd=False,
         vram_peaks=smaug_vrams,

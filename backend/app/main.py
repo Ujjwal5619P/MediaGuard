@@ -30,7 +30,8 @@ def create_app(
         if load_models_on_startup:
             app.state.registry.load_cached_models()
             status = app.state.registry.manager.get_status()
-            if settings.auto_download_models and not status.all_verified:
+            primary = app.state.registry.manager.get_entry("ai_generated_detector")
+            if settings.auto_download_models and not primary.verified:
                 threading.Thread(
                     target=app.state.registry.setup_and_load_all,
                     daemon=True,
@@ -41,7 +42,7 @@ def create_app(
     app = FastAPI(
         title="MediaGuard API",
         description="MediaGuard — Verify Before You Trust. AI-assisted image forensics backend.",
-        version="1.2.0",
+        version="1.3.0",
         lifespan=lifespan,
     )
 
@@ -54,6 +55,7 @@ def create_app(
         artifacts_dir=settings.artifacts_dir,
         low_vram_offload=settings.low_vram_offload,
         decision_threshold=settings.decision_threshold,
+        lightweight_mode=settings.lightweight_mode,
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(
         max_requests=settings.rate_limit_per_min,

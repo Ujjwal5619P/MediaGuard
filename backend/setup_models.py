@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.config import get_settings
 from app.ml.registry import ModelRegistry
+from app.ml.specs import MODEL_CATALOG
 
 
 def main() -> int:
@@ -35,6 +36,11 @@ def main() -> int:
         action="store_true",
         help="Skip test-loading models into PyTorch after SHA-256 verification.",
     )
+    parser.add_argument(
+        "--include-optional",
+        action="store_true",
+        help="Also download the larger UnivFD, face detector, and DINOv2 models.",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -43,6 +49,7 @@ def main() -> int:
         artifacts_dir=settings.artifacts_dir,
         low_vram_offload=settings.low_vram_offload,
         decision_threshold=settings.decision_threshold,
+        lightweight_mode=settings.lightweight_mode,
     )
 
     print(f"MediaGuard Model Storage: {settings.models_dir}")
@@ -50,7 +57,8 @@ def main() -> int:
         registry.manager.verify_existing_models()
     else:
         print("Downloading and verifying checkpoints (resumable, skips already verified files)...")
-        registry.manager.download_all_models()
+        keys = list(MODEL_CATALOG) if args.include_optional else ["ai_generated_detector"]
+        registry.manager.download_all_models(keys=keys)
 
     if not args.no_load_test:
         print("Testing PyTorch model loading...")
@@ -77,15 +85,16 @@ def main() -> int:
             print(f"  Error: {entry.error_message}")
     print("-" * 88)
 
-    if not status.all_verified:
-        print("ERROR: One or more required models failed SHA-256 verification.", file=sys.stderr)
+    primary = next((m for m in status.models if m.key == "ai_generated_detector"), None)
+    if not primary or not primary.verified:
+        print("ERROR: Primary Imager-1-Tiny checkpoint failed verification.", file=sys.stderr)
         return 1
 
-    if not args.no_load_test and not status.all_loaded:
-        print("ERROR: One or more verified models failed to load in PyTorch.", file=sys.stderr)
+    if not args.no_load_test and not primary.loaded_in_memory:
+        print("ERROR: Imager-1-Tiny did not load in PyTorch.", file=sys.stderr)
         return 1
 
-    print("SUCCESS: All MediaGuard models are verified and ready.")
+    print("SUCCESS: Imager-1-Tiny is verified and ready.")
     return 0
 
 

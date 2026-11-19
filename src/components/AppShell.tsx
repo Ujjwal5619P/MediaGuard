@@ -177,7 +177,7 @@ export function AppShell({
               <Activity className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />
               <span className="font-mono">
                 {health
-                  ? `${health.cuda_available ? 'CUDA' : 'CPU'} · ${health.status === 'ok' ? 'All Models Loaded' : 'Check Models'}`
+                  ? `${health.execution_mode.toLowerCase().includes('lightweight') ? 'CPU · Lightweight' : health.cuda_available ? 'CUDA' : 'CPU'} · ${health.status === 'ok' ? 'Primary Ready' : 'Check Models'}`
                   : 'FastAPI Disconnected'}
               </span>
             </div>

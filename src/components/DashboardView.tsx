@@ -63,12 +63,14 @@ export function DashboardView({
   );
 
   const readyModelCount = health
-    ? [
-        health.models.ai_generated_detector.status === 'ready',
-        health.models.univfd_detector?.status === 'ready',
-        health.models.face_manipulation_detector.status === 'ready',
-        health.models.dinov2_extractor.status === 'ready',
-      ].filter(Boolean).length
+    ? health.execution_mode.toLowerCase().includes('lightweight')
+      ? Number(health.models.ai_generated_detector.status === 'ready')
+      : [
+          health.models.ai_generated_detector.status === 'ready',
+          health.models.univfd_detector?.status === 'ready',
+          health.models.face_manipulation_detector.status === 'ready',
+          health.models.dinov2_extractor.status === 'ready',
+        ].filter(Boolean).length
     : 0;
   const totalCatalogModels = health?.models.univfd_detector ? 4 : 3;
 
@@ -136,7 +138,7 @@ export function DashboardView({
             {analytics ? analytics.ai_flagged_count : '—'}
           </div>
           <div className="mt-1.5 text-xs text-slate-500 tabular-nums">
-            {analytics ? `${analytics.ai_evaluated_count} evaluated by Smaug Primary` : 'Awaiting backend'}
+            {analytics ? `${analytics.ai_evaluated_count} evaluated by Imager-1-Tiny` : 'Awaiting backend'}
           </div>
         </div>
 
@@ -303,7 +305,7 @@ export function DashboardView({
           {health && (
             <div className="divide-y divide-slate-800/80 border-t border-slate-800 pt-2 text-xs">
               {[
-                { label: 'AI-Generated · Smaug (Primary)', comp: health.models.ai_generated_detector },
+                { label: 'AI-Generated · Imager-1-Tiny (Primary)', comp: health.models.ai_generated_detector },
                 ...(health.models.univfd_detector
                   ? [{ label: 'AI Comparison · UnivFD CLIP', comp: health.models.univfd_detector }]
                   : []),

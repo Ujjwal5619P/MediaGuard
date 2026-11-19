@@ -14,7 +14,7 @@ def test_health_and_model_status_without_weights(client: TestClient) -> None:
     assert models["dinov2_extractor"]["status"] == "unavailable"
     assert models["dinov2_extractor"]["checkpoint_verified"] is False
     assert models["ai_generated_detector"]["status"] == "unavailable"
-    assert models["ai_generated_detector"]["model_id"] == "abacusai/Smaug-AI-Image-Detector"
+    assert models["ai_generated_detector"]["model_id"] == "Imagers/Imager-1-tiny"
     assert models["univfd_detector"]["status"] == "unavailable"
     assert "openai/clip-vit-large-patch14" in models["univfd_detector"]["model_id"]
     assert models["face_manipulation_detector"]["status"] == "unavailable"

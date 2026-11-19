@@ -51,6 +51,10 @@ class ModelManager:
         return datetime.now(timezone.utc).isoformat()
 
     def _model_dir(self, spec: ModelSpec) -> Path:
+        # Keep the historical Smaug checkpoint directory intact. The new
+        # lightweight primary has its own directory and never overwrites it.
+        if spec.key == "ai_generated_detector":
+            return self.models_dir / "imager_1_tiny"
         return self.models_dir / spec.key
 
     def _load_or_init_manifest(self) -> None:
@@ -75,7 +79,6 @@ class ModelManager:
                 "error_message": prev.get("error_message"),
                 "updated_at": prev.get("updated_at", self._now_iso()),
             }
-        self.verify_existing_models()
 
     def _save_manifest(self) -> None:
         payload = {
@@ -110,11 +113,18 @@ class ModelManager:
                 if fspec.filename == spec.primary_weight_file:
                     primary_sha = actual
 
+        if primary_sha is None:
+            primary_path = mdir / spec.primary_weight_file
+            if primary_path.exists():
+                primary_sha = compute_file_sha256(primary_path)
+
         return True, primary_sha, None
 
-    def verify_existing_models(self) -> None:
+    def verify_existing_models(self, keys: Optional[list[str]] = None) -> None:
         with self._lock:
-            for key, spec in MODEL_CATALOG.items():
+            selected_keys = keys if keys is not None else list(MODEL_CATALOG)
+            for key in selected_keys:
+                spec = MODEL_CATALOG[key]
                 ok, sha, err = self._verify_spec_on_disk(spec)
                 entry = self._state[key]
                 if ok:
@@ -193,13 +203,6 @@ class ModelManager:
         mdir = self._model_dir(spec)
         mdir.mkdir(parents=True, exist_ok=True)
 
-        expected_rel_paths = {f.filename.replace("\\", "/") for f in spec.files}
-        for existing in list(mdir.rglob("*")):
-            if existing.is_file():
-                rel = existing.relative_to(mdir).as_posix()
-                if rel not in expected_rel_paths and not rel.startswith(".cache/"):
-                    existing.unlink()
-
         try:
             from huggingface_hub import hf_hub_download
         except ImportError as exc:
@@ -274,10 +277,16 @@ class ModelManager:
 
         return self.get_entry(key)
 
-    def download_all_models(self) -> ModelsStatusResponse:
+    def download_all_models(self, keys: Optional[list[str]] = None) -> ModelsStatusResponse:
         self.download_in_progress = True
         try:
-            for key in MODEL_CATALOG:
+            # The default setup path downloads only the primary CPU detector.
+            # Other model checkpoints remain supported and can be requested
+            # explicitly without being downloaded as a side effect.
+            selected_keys = keys if keys is not None else ["ai_generated_detector"]
+            for key in selected_keys:
+                if key not in MODEL_CATALOG:
+                    raise KeyError(f"Unknown model key: {key}")
                 self.ensure_model_downloaded(key, force_verify=True)
         finally:
             self.download_in_progress = False

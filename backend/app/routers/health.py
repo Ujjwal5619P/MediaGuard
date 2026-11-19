@@ -12,17 +12,19 @@ async def get_health(request: Request) -> HealthResponse:
     cuda_available, device_name, execution_mode, vram_measured = registry.probe_hardware()
     readiness = registry.get_readiness_map()
 
-    all_ready = (
-        readiness.dinov2_extractor.status == "ready"
-        and readiness.ai_generated_detector.status == "ready"
-        and readiness.face_manipulation_detector.status == "ready"
+    all_ready = readiness.ai_generated_detector.status == "ready" and (
+        settings.lightweight_mode
+        or (
+            readiness.dinov2_extractor.status == "ready"
+            and readiness.face_manipulation_detector.status == "ready"
+        )
     )
 
     return HealthResponse(
         status="ok" if all_ready else "degraded",
         service=settings.service_name,
         milestone=settings.milestone,
-        version="1.2.0",
+        version="1.3.0",
         timestamp_utc=registry.utc_now_iso(),
         cuda_available=cuda_available,
         device_name=device_name,

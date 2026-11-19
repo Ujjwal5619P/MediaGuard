@@ -1,13 +1,9 @@
 import gc
-import importlib.util
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple
 
-import cv2
-import numpy as np
 from PIL import Image, ImageOps
 
 from app.ml.model_manager import ModelManager
@@ -26,9 +22,7 @@ class InferenceEngine:
     Hardware-optimized sequential PyTorch inference engine for RTX 2050 (4 GB VRAM)
     and CPU fallback.
 
-    - Pipeline A (Primary AI-generated detector): Official `abacusai/Smaug-AI-Image-Detector`
-      via `SmaugImageDetect.from_pretrained(...)` scoring three 528x528 crops.
-      Runs in bfloat16 when supported on CUDA or float32 (never fp16, per official repo).
+    - Pipeline A (Primary AI-generated detector): Imager-1-Tiny ResNet-50 on CPU.
     - Pipeline A2 (Secondary comparison AI-generated detector): UniversalFakeDetect (UnivFD)
       using `openai/clip-vit-large-patch14` vision backbone + `fc_weights.pth` linear head.
     - Pipeline B (Face manipulation detection): OpenCV Haar face detection +
@@ -41,7 +35,7 @@ class InferenceEngine:
         model_manager: ModelManager,
         artifacts_dir: Path,
         low_vram_offload: bool = True,
-        decision_threshold: float = 0.50,
+        decision_threshold: float = 0.385,
     ) -> None:
         self.manager = model_manager
         self.artifacts_dir = artifacts_dir
@@ -50,12 +44,15 @@ class InferenceEngine:
 
         self._dinov2_processor: Any = None
         self._dinov2_model: Any = None
-        self._smaug_detector: Any = None
+        self._primary_ai_detector: Any = None
+        self._imager_preprocess: Any = None
         self._univfd_processor: Any = None
         self._univfd_model: Any = None
         self._face_model: Any = None
         self._face_cascade_primary: Any = None
         self._face_cascade_alt: Any = None
+        self.lightweight_mode = False
+        self.last_pipeline_ms: Optional[int] = None
 
     def probe_hardware(self) -> Tuple[bool, str, str, Optional[MeasuredVram]]:
         try:
@@ -84,23 +81,48 @@ class InferenceEngine:
             return False, f"CPU (CUDA verification failed: {exc})", "cpu", None
 
     def _init_face_cascades(self) -> None:
+        import cv2
+
         if self._face_cascade_primary is None:
             primary_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
             alt_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_alt2.xml"
             self._face_cascade_primary = cv2.CascadeClassifier(str(primary_path))
             self._face_cascade_alt = cv2.CascadeClassifier(str(alt_path))
 
-    def load_verified_models(self) -> None:
-        self.manager.verify_existing_models()
-        self._load_dinov2_if_verified()
-        self._load_smaug_if_verified()
-        self._load_univfd_if_verified()
-        self._load_face_detector_if_verified()
+    def load_verified_models(self, lightweight_mode: bool = False) -> None:
+        # If a registry is switched from full to lightweight mode in-process,
+        # drop optional models before verifying/loading the primary detector.
+        if lightweight_mode:
+            self._unload_optional_models()
+        keys = None if not lightweight_mode else ["ai_generated_detector"]
+        self.manager.verify_existing_models(keys=keys)
+        self._load_primary_detector_if_verified()
+        if not lightweight_mode:
+            self._load_dinov2_if_verified()
+            self._load_univfd_if_verified()
+            self._load_face_detector_if_verified()
+
+    def _unload_optional_models(self) -> None:
+        self._dinov2_processor = None
+        self._dinov2_model = None
+        self._univfd_processor = None
+        self._univfd_model = None
+        self._face_model = None
+        for key in ("dinov2_extractor", "univfd_detector", "face_manipulation_detector"):
+            self.manager.mark_loaded(key, False)
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
     def unload_models(self) -> None:
         self._dinov2_processor = None
         self._dinov2_model = None
-        self._smaug_detector = None
+        self._primary_ai_detector = None
         self._univfd_processor = None
         self._univfd_model = None
         self._face_model = None
@@ -146,36 +168,59 @@ class InferenceEngine:
             self.manager.mark_loaded("dinov2_extractor", False, f"Load failed: {exc}")
             return False
 
-    def _load_smaug_if_verified(self) -> bool:
-        if self._smaug_detector is not None:
+    def _load_primary_detector_if_verified(self) -> bool:
+        if self._primary_ai_detector is not None:
             return True
         entry = self.manager.get_entry("ai_generated_detector")
         if not entry.verified:
             return False
         try:
+            import torch
+            import torch.nn as nn
+            from torchvision import models, transforms
+
+            torch.set_num_threads(1)
+
             mdir = self.manager.get_model_dir("ai_generated_detector")
-            helper_path = mdir / "smaug_image_detect.py"
-            if not helper_path.exists():
-                raise RuntimeError("Official smaug_image_detect.py missing from model directory.")
-
-            mod_name = "mediaguard_smaug_image_detect"
-            spec_obj = importlib.util.spec_from_file_location(mod_name, str(helper_path))
-            if spec_obj is None or spec_obj.loader is None:
-                raise RuntimeError("Unable to load official smaug_image_detect module spec.")
-            module = importlib.util.module_from_spec(spec_obj)
-            sys.modules[mod_name] = module
-            spec_obj.loader.exec_module(module)
-
-            SmaugImageDetect = getattr(module, "SmaugImageDetect")
-            detector = SmaugImageDetect.from_pretrained(str(mdir), device="cpu")
-            detector.st.eval()
-            self._smaug_detector = detector
+            weight_path = mdir / MODEL_CATALOG["ai_generated_detector"].primary_weight_file
+            detector = models.resnet50(weights=None)
+            detector.fc = nn.Sequential(
+                nn.Dropout(p=0.5), nn.Linear(detector.fc.in_features, 2)
+            )
+            checkpoint = torch.load(
+                str(weight_path), map_location="cpu", weights_only=True
+            )
+            if (
+                checkpoint.get("architecture") != "resnet50"
+                or checkpoint.get("image_size") != 224
+                or checkpoint.get("class_mapping") != {"real": 0, "ai": 1}
+                or abs(float(checkpoint.get("best_threshold", -1)) - 0.385) > 1e-9
+            ):
+                raise RuntimeError(
+                    "Checkpoint metadata does not match the verified ResNet-50, 224px, "
+                    "real/AI class mapping, and 0.385 threshold contract."
+                )
+            state_dict = checkpoint.get("model", checkpoint)
+            detector.load_state_dict(state_dict, strict=True)
+            detector.to(device="cpu", dtype=torch.float32).eval()
+            self._imager_preprocess = transforms.Compose(
+                [
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225],
+                    ),
+                ]
+            )
+            self._primary_ai_detector = detector
             self.manager.mark_loaded("ai_generated_detector", True)
             return True
         except Exception as exc:
-            self._smaug_detector = None
+            self._primary_ai_detector = None
             self.manager.mark_loaded(
-                "ai_generated_detector", False, f"Smaug load failed: {exc}"
+                "ai_generated_detector", False, f"Imager-1-Tiny load failed: {exc}"
             )
             return False
 
@@ -324,10 +369,13 @@ class InferenceEngine:
     @staticmethod
     def _save_heatmap_overlay(
         base_rgb: Image.Image,
-        heatmap_01: np.ndarray,
+        heatmap_01: "np.ndarray",
         out_path: Path,
         alpha: float = 0.48,
     ) -> None:
+        import cv2
+        import numpy as np
+
         w, h = base_rgb.size
         resized = cv2.resize(heatmap_01.astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
         resized = np.clip(resized, 0.0, 1.0)
@@ -347,6 +395,17 @@ class InferenceEngine:
         include_attribution: bool = False,
     ) -> Tuple[Dinov2FeatureSummary, Optional[Path], Optional[float], str]:
         spec = MODEL_CATALOG["dinov2_extractor"]
+        if self.lightweight_mode:
+            return (
+                Dinov2FeatureSummary(
+                    status="unavailable",
+                    model_id=spec.repo_id,
+                    reason="DINOv2 is disabled in lightweight deployment mode.",
+                ),
+                None,
+                None,
+                "unavailable",
+            )
         if not self._load_dinov2_if_verified():
             entry = self.manager.get_entry("dinov2_extractor")
             return (
@@ -362,6 +421,7 @@ class InferenceEngine:
             )
 
         import torch
+        import numpy as np
 
         started = time.perf_counter()
         peak_vram: Optional[float] = None
@@ -443,11 +503,11 @@ class InferenceEngine:
         self, pil_rgb: Image.Image
     ) -> Tuple[TaskIndicator, Optional[float], str]:
         """
-        Primary AI-Generated Image Detector: Official `abacusai/Smaug-AI-Image-Detector`
-        invoked via `SmaugImageDetect.from_pretrained(...)` with 3x 528x528 crops.
+        Primary AI-Generated Image Detector: Imager-1-Tiny ResNet-50, always
+        executed on CPU using its documented 224x224 ImageNet preprocessing.
         """
         spec = MODEL_CATALOG["ai_generated_detector"]
-        if not self._load_smaug_if_verified():
+        if not self._load_primary_detector_if_verified():
             entry = self.manager.get_entry("ai_generated_detector")
             return (
                 TaskIndicator(
@@ -465,7 +525,7 @@ class InferenceEngine:
                     execution_device="unavailable",
                     limitations=spec.limitations,
                     reason=entry.error_message
-                    or "Smaug AI Image Detector weights not downloaded/verified. Run `python setup_models.py`.",
+                    or "Imager-1-Tiny weights not downloaded/verified. Run `python setup_models.py`.",
                 ),
                 None,
                 "unavailable",
@@ -476,36 +536,21 @@ class InferenceEngine:
         started = time.perf_counter()
         peak_vram: Optional[float] = None
         exec_device = "cpu"
-        cuda_ok = torch.cuda.is_available()
-        st = self._smaug_detector.st
+        model = self._primary_ai_detector
 
         try:
-            if cuda_ok:
-                use_bf16 = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
-                target_dtype = torch.bfloat16 if use_bf16 else torch.float32
-                try:
-                    torch.cuda.reset_peak_memory_stats(0)
-                    st.to(device="cuda:0", dtype=target_dtype)
-                    exec_device = "cuda:0 (bf16)" if use_bf16 else "cuda:0 (fp32)"
-                    with torch.inference_mode():
-                        ai_score = float(self._smaug_detector(pil_rgb, crops=3))
-                    peak_vram = self._measure_peak_vram_mb()
-                except torch.cuda.OutOfMemoryError:
-                    torch.cuda.empty_cache()
-                    st.to(device="cpu", dtype=torch.float32)
-                    exec_device = "cpu (CUDA OOM fallback)"
-                    with torch.inference_mode():
-                        ai_score = float(self._smaug_detector(pil_rgb, crops=3))
-                finally:
-                    if self.low_vram_offload:
-                        st.to(device="cpu", dtype=torch.float32)
-                        torch.cuda.empty_cache()
-                        gc.collect()
-            else:
-                exec_device = "cpu"
-                st.to(device="cpu", dtype=torch.float32)
-                with torch.inference_mode():
-                    ai_score = float(self._smaug_detector(pil_rgb, crops=3))
+            # Intentionally pin this primary detector to CPU even when CUDA is
+            # available, so behavior matches the lightweight deployment path.
+            exec_device = "cpu"
+            model.to(device="cpu", dtype=torch.float32)
+            input_tensor = self._imager_preprocess(pil_rgb).unsqueeze(0)
+            with torch.inference_mode():
+                logits = model(input_tensor).reshape(-1)
+                if logits.numel() != 2:
+                    raise RuntimeError(
+                        f"Expected two class logits (real, ai); got {logits.numel()}."
+                    )
+                ai_score = float(torch.softmax(logits, dim=0)[1].item())
 
             ai_score = max(0.0, min(1.0, ai_score))
             elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -534,8 +579,8 @@ class InferenceEngine:
                     processing_ms=elapsed_ms,
                     limitations=spec.limitations,
                     reason=(
-                        f"Smaug official 3x 528x528 crop inference returned raw P(ai)={ai_score:.4f} "
-                        f"vs threshold {self.decision_threshold:.2f} on {exec_device}."
+                        f"Imager-1-Tiny returned raw P(ai)={ai_score:.4f} vs threshold "
+                        f"{self.decision_threshold:.3f} on CPU. This score is not certainty."
                     ),
                 ),
                 peak_vram,
@@ -556,7 +601,7 @@ class InferenceEngine:
                     model_version=spec.revision[:10],
                     execution_device=exec_device,
                     limitations=spec.limitations,
-                    reason=f"Smaug inference failed: {str(exc)[:180]}",
+                    reason=f"Imager-1-Tiny inference failed: {str(exc)[:180]}",
                 ),
                 peak_vram,
                 exec_device,
@@ -567,6 +612,27 @@ class InferenceEngine:
     ) -> Tuple[TaskIndicator, Optional[float], str]:
         """Secondary comparison detector: UniversalFakeDetect (CLIP ViT-L/14 + fc_weights.pth)."""
         spec = MODEL_CATALOG["univfd_detector"]
+        if self.lightweight_mode:
+            return (
+                TaskIndicator(
+                    task="ai_generated_image_detection",
+                    status="unavailable",
+                    score=None,
+                    decision_threshold=self.decision_threshold,
+                    prediction_label=None,
+                    calibrated=False,
+                    model_id=spec.repo_id,
+                    model_name=spec.name,
+                    architecture=spec.architecture,
+                    model_source=spec.source_url,
+                    model_version=spec.revision[:10],
+                    execution_device="unavailable",
+                    limitations=spec.limitations,
+                    reason="UnivFD comparison is disabled in lightweight deployment mode.",
+                ),
+                None,
+                "unavailable",
+            )
         if not self._load_univfd_if_verified():
             entry = self.manager.get_entry("univfd_detector")
             return (
@@ -676,6 +742,9 @@ class InferenceEngine:
             )
 
     def _detect_faces(self, pil_rgb: Image.Image) -> List[Tuple[int, int, int, int]]:
+        import cv2
+        import numpy as np
+
         self._init_face_cascades()
         rgb_np = np.asarray(pil_rgb)
         gray = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2GRAY)
@@ -702,6 +771,31 @@ class InferenceEngine:
         include_attribution: bool = False,
     ) -> Tuple[TaskIndicator, Optional[Path], Optional[float], str]:
         spec = MODEL_CATALOG["face_manipulation_detector"]
+        if self.lightweight_mode:
+            return (
+                TaskIndicator(
+                    task="face_manipulation_detection",
+                    status="unavailable",
+                    score=None,
+                    decision_threshold=self.decision_threshold,
+                    prediction_label=None,
+                    calibrated=False,
+                    model_id=spec.repo_id,
+                    model_name=spec.name,
+                    architecture=spec.architecture,
+                    model_source=spec.source_url,
+                    model_version=spec.revision[:10],
+                    execution_device="unavailable",
+                    limitations=spec.limitations,
+                    reason="Face manipulation analysis is disabled in lightweight deployment mode.",
+                ),
+                None,
+                None,
+                "unavailable",
+            )
+        import cv2
+        import numpy as np
+
         if not self._load_face_detector_if_verified():
             entry = self.manager.get_entry("face_manipulation_detector")
             return (
@@ -933,6 +1027,69 @@ class InferenceEngine:
         with Image.open(io.BytesIO(image_bytes)) as img:
             pil_rgb = ImageOps.exif_transpose(img).convert("RGB")
 
+        if self.lightweight_mode:
+            # The lightweight contract executes exactly one learned detector.
+            # Optional result schemas remain present for API compatibility.
+            pipeline_started = time.perf_counter()
+            ai_indicator, primary_vram, primary_device = self.run_ai_generated_detection(pil_rgb)
+            dino_spec = MODEL_CATALOG["dinov2_extractor"]
+            univfd_spec = MODEL_CATALOG["univfd_detector"]
+            face_spec = MODEL_CATALOG["face_manipulation_detector"]
+            dinov2_summary = Dinov2FeatureSummary(
+                status="unavailable",
+                model_id=dino_spec.repo_id,
+                reason="DINOv2 is disabled in lightweight deployment mode.",
+            )
+            univfd_indicator = TaskIndicator(
+                task="ai_generated_image_detection",
+                status="unavailable",
+                score=None,
+                decision_threshold=self.decision_threshold,
+                calibrated=False,
+                model_id=univfd_spec.repo_id,
+                model_name=univfd_spec.name,
+                architecture=univfd_spec.architecture,
+                model_source=univfd_spec.source_url,
+                model_version=univfd_spec.revision[:10],
+                execution_device="unavailable",
+                limitations=univfd_spec.limitations,
+                reason="UnivFD comparison is disabled in lightweight deployment mode.",
+            )
+            face_indicator = TaskIndicator(
+                task="face_manipulation_detection",
+                status="unavailable",
+                score=None,
+                decision_threshold=self.decision_threshold,
+                calibrated=False,
+                model_id=face_spec.repo_id,
+                model_name=face_spec.name,
+                architecture=face_spec.architecture,
+                model_source=face_spec.source_url,
+                model_version=face_spec.revision[:10],
+                execution_device="unavailable",
+                limitations=face_spec.limitations,
+                reason="Face manipulation analysis is disabled in lightweight deployment mode.",
+            )
+            self.last_pipeline_ms = int((time.perf_counter() - pipeline_started) * 1000)
+            attribution = ExperimentalAttribution(
+                available=False,
+                gradcam_available=False,
+                patch_attention_available=False,
+                reason="Attribution models are disabled in lightweight deployment mode.",
+            )
+            return (
+                dinov2_summary,
+                ai_indicator,
+                univfd_indicator,
+                face_indicator,
+                attribution,
+                None,
+                None,
+                primary_vram,
+                primary_device,
+            )
+
+        pipeline_started = time.perf_counter()
         dinov2_summary, patch_path, vram_dino, dev_dino = self.run_dinov2(
             pil_rgb, scan_id=scan_id, include_attribution=include_attribution
         )
@@ -948,6 +1105,9 @@ class InferenceEngine:
         peak_vram = max(vram_values) if vram_values else None
         devices = [d for d in (dev_smaug, dev_univfd, dev_face, dev_dino) if d != "unavailable"]
         execution_device = devices[0] if devices else "unavailable"
+        # Keep elapsed pipeline time attached to detector metrics at the API
+        # boundary; request upload/DB overhead is measured separately there.
+        self.last_pipeline_ms = int((time.perf_counter() - pipeline_started) * 1000)
 
         gradcam_url = f"/api/v1/artifacts/{gradcam_path.name}" if gradcam_path else None
         patch_url = f"/api/v1/artifacts/{patch_path.name}" if patch_path else None

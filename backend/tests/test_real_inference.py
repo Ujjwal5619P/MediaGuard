@@ -23,6 +23,7 @@ from app.ml.model_manager import ModelManager
 def _real_models_available() -> bool:
     settings = Settings()
     mgr = ModelManager(settings.models_dir)
+    mgr.verify_existing_models()
     return mgr.get_status().all_verified
 
 
@@ -57,12 +58,12 @@ def test_real_checkpoints_load_and_infer_non_face_png_and_jpeg(
     assert health["models"]["ai_generated_detector"]["status"] == "ready"
     assert (
         health["models"]["ai_generated_detector"]["model_id"]
-        == "abacusai/Smaug-AI-Image-Detector"
+        == "Imagers/Imager-1-tiny"
     )
     assert health["models"]["univfd_detector"]["status"] == "ready"
     assert health["models"]["face_manipulation_detector"]["status"] == "ready"
 
-    # 1. Real gradient PNG without a face -> DINOv2 + Smaug Primary + UnivFD Comparison evaluated, face = no_face_detected
+    # 1. Test gradient PNG without a face -> DINOv2 + Imager primary + UnivFD evaluated, face = no_face_detected
     img = Image.new("RGB", (256, 256))
     for y in range(256):
         for x in range(256):
@@ -91,9 +92,9 @@ def test_real_checkpoints_load_and_infer_non_face_png_and_jpeg(
 
         ai = body["ai_generated_indicator"]
         assert ai["status"] == "evaluated"
-        assert ai["model_id"] == "abacusai/Smaug-AI-Image-Detector"
-        assert "Smaug" in ai["model_name"] or "Smaug" in ai["architecture"]
-        assert "abacusai/Smaug-AI-Image-Detector" in ai["model_source"]
+        assert ai["model_id"] == "Imagers/Imager-1-tiny"
+        assert "Imager-1-Tiny" in ai["model_name"]
+        assert "Imagers/Imager-1-tiny" in ai["model_source"]
         assert 0.0 <= ai["score"] <= 1.0
         assert ai["calibrated"] is False
 
@@ -154,7 +155,7 @@ def test_real_checkpoints_face_detection_and_gradcam_on_portrait(
     body = resp.json()
 
     assert body["ai_generated_indicator"]["status"] == "evaluated"
-    assert body["ai_generated_indicator"]["model_id"] == "abacusai/Smaug-AI-Image-Detector"
+    assert body["ai_generated_indicator"]["model_id"] == "Imagers/Imager-1-tiny"
     assert 0.0 <= body["ai_generated_indicator"]["score"] <= 1.0
 
     assert body["univfd_indicator"] is not None

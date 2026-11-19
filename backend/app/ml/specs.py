@@ -29,52 +29,28 @@ class ModelSpec:
     files: List[ModelFileSpec]
 
 
-SMAUG_REVISION = "c7c95951e04a87b884a4ad479401b1128c3903bd"
+IMAGER_TINY_REVISION = "3aeaac5"
 
 MODEL_CATALOG: Dict[str, ModelSpec] = {
     "ai_generated_detector": ModelSpec(
         key="ai_generated_detector",
-        name="Smaug AI Image Detector (Primary)",
-        repo_id="abacusai/Smaug-AI-Image-Detector",
-        revision=SMAUG_REVISION,
-        source_url="https://huggingface.co/abacusai/Smaug-AI-Image-Detector",
+        name="Imager-1-Tiny (Primary)",
+        repo_id="Imagers/Imager-1-tiny",
+        revision=IMAGER_TINY_REVISION,
+        source_url="https://huggingface.co/Imagers/Imager-1-tiny",
         license="Apache-2.0",
-        architecture="EmbeddingGemma-2 vision-only encoder (439M params) + SentenceTransformer Pooling/Normalize/Dense classifier (bfloat16 on CUDA, float32 on CPU)",
-        training_dataset="Fine-tuned by Abacus.AI on Google EmbeddingGemma-2 for modern synthetic generators (GPT-Image, FLUX, Midjourney, DALL-E, Sora/Veo frames); benchmarked on OpenFake & CommunityForensics.",
-        intended_task="Primary full-image AI-generated vs. real image detector scored via three 528x528 crops at native resolution.",
-        preprocessing="Official SmaugImageDetect views(img, crops=3): EXIF-transpose RGB -> shortest edge to 576px (upscale to 528 if smaller) -> 3 native-res 528x528 crops (start, center, end) -> 140 vision tokens -> sigmoid(mean crop logits).",
-        limitations="Whole-image synthetic probability only; uncalibrated raw sigmoid score; unstable in fp16 (requires bf16 on CUDA or fp32 on CPU). Does not localize partial edits on real photos and accuracy can vary under heavy recompression or unseen generators.",
-        primary_weight_file="model.safetensors",
+        architecture="Torchvision ResNet-50 with dropout and two-class head, ~25M parameters (FP32 CPU)",
+        training_dataset="Author reports training on Hemg/AI-Generated-vs-Real-Images-Datasets and Defactify_Image_Dataset; dataset terms remain applicable.",
+        intended_task="Whole-image AI-generated vs. real image classification.",
+        preprocessing="EXIF-transpose RGB; resize shorter edge to 256px; center crop 224x224; convert to tensor and ImageNet normalization (mean 0.485/0.456/0.406, std 0.229/0.224/0.225); softmax over (real, AI) logits using checkpoint class_mapping; AI threshold 0.385.",
+        limitations="Author-reported validation metrics are not independent or guaranteed on unseen images. Generalization may vary by generator, editing, compression, and image domain. Scores are uncalibrated signals, not proof.",
+        primary_weight_file="model_imager-1-tiny.pth",
         files=[
-            ModelFileSpec("config.json", "", 3077),
-            ModelFileSpec("config_sentence_transformers.json", "", 1326),
-            ModelFileSpec("modules.json", "", 537),
-            ModelFileSpec("processor_config.json", "", 1788),
-            ModelFileSpec("sentence_bert_config.json", "", 747),
-            ModelFileSpec("tokenizer_config.json", "", 1600),
-            ModelFileSpec("chat_template.jinja", "", 1016),
             ModelFileSpec(
-                "smaug_image_detect.py",
-                "ad8a17d78e610127d6e23fc7fb4af27a3e7a39da5734ea643dfaafdc667f282a",
-                3015,
-            ),
-            ModelFileSpec(
-                "model.safetensors",
-                "c5ae3fac7470126f25d2dca2386d8728f7c828fae53e8ac9eb006937821ea006",
-                877599816,
-            ),
-            ModelFileSpec(
-                "tokenizer.json",
-                "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4",
-                32170510,
-            ),
-            ModelFileSpec("1_Pooling/config.json", "", 90),
-            ModelFileSpec("2_Normalize/config.json", "", 97),
-            ModelFileSpec("3_Dense/config.json", "", 225),
-            ModelFileSpec(
-                "3_Dense/model.safetensors",
-                "b09918c3838ef3b9dbd7057b0a8d382eced8fa06363ed62a5f60abe65cc65809",
-                1690,
+                "model_imager-1-tiny.pth",
+                "80e01b0a5c180ed2391c5763accbc2b9b4821c5f12299f95b08fcbe09442bd8d",
+                94_371_929,
+                remote_filename="model/model_imager-1-tiny.pth",
             ),
         ],
     ),
@@ -89,7 +65,7 @@ MODEL_CATALOG: Dict[str, ModelSpec] = {
         training_dataset="ProGAN synthetic/real benchmark (Ojha et al., CVPR 2023 UnivFD) · Retained as secondary comparison baseline.",
         intended_task="Secondary comparison full-image synthetic/AI-generated vs. real detector (raw sigmoid P(ai)).",
         preprocessing="EXIF-transpose RGB -> Bicubic resize 224 -> CenterCrop 224x224 -> CLIP mean=[0.4815,0.4578,0.4082], std=[0.2686,0.2613,0.2758] -> L2-normalize",
-        limitations="Secondary comparison detector only. Trained on older ProGAN distributions; raw sigmoid score is uncalibrated and less sensitive to modern generators than Smaug.",
+        limitations="Secondary comparison detector only. Trained on older ProGAN distributions; raw sigmoid score is uncalibrated and may be less sensitive to modern generators.",
         primary_weight_file="fc_weights.pth",
         files=[
             ModelFileSpec(

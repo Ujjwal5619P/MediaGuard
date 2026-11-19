@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     )
 
     service_name: str = "mediaguard-api"
-    milestone: str = "smaug_primary_and_dataset_eval_v1_2"
+    milestone: str = "imager_tiny_cpu_primary_v1_3"
     host: str = "127.0.0.1"
+    # Render injects PORT; keep local runs on 8000 by default.
     port: int = 8000
     cors_origins: List[str] = [
         "http://localhost:3000",
@@ -39,7 +40,11 @@ class Settings(BaseSettings):
     # ML Model Management & RTX 2050 4 GB VRAM optimization
     auto_download_models: bool = True
     low_vram_offload: bool = True
-    decision_threshold: float = 0.50
+    decision_threshold: float = 0.385
+
+    # When enabled, use the lightweight primary and leave optional forensic
+    # models unloaded on resource-constrained hosts.
+    lightweight_mode: bool = False
 
     # Local storage directories (relative to backend root by default)
     models_dir: Path = Path(__file__).resolve().parent.parent / "models"

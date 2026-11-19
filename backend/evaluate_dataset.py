@@ -5,7 +5,7 @@ Evaluates local images organized in:
   <dataset_dir>/ai_generated/   (ground truth: AI_GENERATED)
   <dataset_dir>/real/           (ground truth: REAL)
 
-Runs official abacusai/Smaug-AI-Image-Detector (Primary) and optionally
+Runs official Imager-1-Tiny (Primary) and optionally
 UnivFD CLIP ViT-L/14 (Comparison) without any model training, fine-tuning,
 or automatic threshold tuning.
 
@@ -56,13 +56,13 @@ def main() -> int:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.50,
-        help="Fixed decision threshold in (0, 1) (default: 0.50). Never auto-tuned.",
+    default=0.385,
+        help="Fixed decision threshold in (0, 1) (default: 0.385). Never auto-tuned.",
     )
     parser.add_argument(
         "--no-univfd",
         action="store_true",
-        help="Evaluate only primary Smaug-AI-Image-Detector without UnivFD comparison.",
+        help="Evaluate only primary Imager-1-Tiny without UnivFD comparison.",
     )
     parser.add_argument(
         "--max-images",
@@ -123,7 +123,7 @@ def main() -> int:
 
     if registry.get_readiness_map().ai_generated_detector.status != "ready":
         print(
-            "ERROR: Smaug-AI-Image-Detector is not verified/loaded. Run `python setup_models.py` first.",
+            "ERROR: Imager-1-Tiny is not verified/loaded. Run `python setup_models.py` first.",
             file=sys.stderr,
         )
         return 1
@@ -144,7 +144,7 @@ def main() -> int:
 
     sm = detail.smaug_metrics
     cm = sm.confusion_matrix
-    print("\n=== Smaug AI Image Detector (Primary · abacusai/Smaug-AI-Image-Detector) ===")
+    print("\n=== Imager-1-Tiny (Primary) ===")
     print(f"Split Role : {detail.split_role} | Fixed Threshold: {detail.decision_threshold:.2f} (Auto-tuned: {detail.threshold_auto_tuned})")
     print(f"Evaluated  : {sm.evaluated_count} | Errors: {sm.error_count} | Device: {detail.execution_device}")
     print(f"Accuracy   : {_fmt_pct(sm.accuracy)} | Precision: {_fmt_pct(sm.precision)} | Recall: {_fmt_pct(sm.recall)} | F1: {_fmt_pct(sm.f1_score)}")
